@@ -40,32 +40,41 @@
 - **workflow_dispatch**: Actions タブから「Run workflow」ボタンで手動実行する仕組み
 - **cron**: 定期実行スケジュール (例: `0 22 * * *` = 毎日 UTC 22:00 = JST 07:00)
 - **config.yaml**: 設定ファイル。GitHub の Web 上でファイル名をクリック → 鉛筆マークで編集可能
+- **PMID**: PubMed Unique Identifier。PubMed上の論文を一意に識別する番号
+- **MeSH**: Medical Subject Headings。医学論文の分類に使われる統制語彙体系
+- **E-utilities**: PubMedのAPIサービス。プログラムから論文情報を取得可能
+- **retraction**: 論文撤回。発表後に誤りや不正が判明して取り下げられた論文
 
 ## ⚡ Setup - 10分で動かす
 
 ### 1. このテンプレートを使用
 GitHub で「Use this template」→ 新しいリポジトリを作成
 
-### 2. Google AI Studio API キー取得
+### 2. Actions を有効化
+Fork したリポジトリで Actions タブ → 「I understand my workflows, go ahead and enable them」をクリック
+
+### 3. Google AI Studio API キー取得
 1. [Google AI Studio](https://aistudio.google.com/) にアクセス
 2. 「Get API key」→ 新しいプロジェクトでキー作成
 3. キーをコピー（後でSecretsに設定）
 
-### 3. Gmail アプリパスワード生成
+### 4. Gmail アプリパスワード生成
 1. [Googleアカウント設定のセキュリティページ](https://myaccount.google.com/security) → 2段階認証 有効化
 2. [App Password 生成ページ](https://myaccount.google.com/apppasswords) → 「その他」を選択
 3. 生成されたパスワードをコピー
 
-### 4. GitHub Secrets 設定
+### 5. GitHub Secrets 設定
 リポジトリ設定 → Secrets and variables → Actions → New repository secret
 
 ```
-GEMINI_API_KEY: (Step 2のAPIキー)
+GEMINI_API_KEY: (Step 3のAPIキー)
 GMAIL_ADDRESS: your.email@gmail.com  
-GMAIL_APP_PASSWORD: (Step 3のアプリパスワード)
+GMAIL_APP_PASSWORD: (Step 4のアプリパスワード)
 ```
 
-### 5. config.yaml 編集
+### 6. config.yaml 編集
+`cp config.example.yaml config.yaml` (または GitHub Web UI 上で config.example.yaml を開いて config.yaml という名前でコピー)
+
 配信先メールアドレスを変更:
 
 ```yaml
@@ -73,7 +82,7 @@ delivery:
   recipient: "your.email@example.com"  # ここを変更
 ```
 
-### 6. テスト実行
+### 7. テスト実行
 Actions タブ → 「Daily Medical Paper Digest」→ 「Run workflow」
 
 ## 🎯 カスタマイズ
