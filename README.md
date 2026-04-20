@@ -1,5 +1,7 @@
 # 🏥 AuditScope - Medical AI Paper Digest
 
+⚠️ 本ツールは情報提供のみを目的とし、診断・治療推奨を行うものではありません。臨床判断の代替にはなりません。
+
 臨床医向けのPubMed論文自動要約システム。毎朝7時にAI関連医学論文の要約をメール配信します。
 
 医療AIガバナンスの7軸（引用・幻覚防止・再現性・免責・撤回チェック・利益相反・監査ログ）を組み込んだ、信頼性の高い情報提供を実現します。
@@ -29,6 +31,16 @@
 免責事項: この要約は医療従事者への情報提供を目的とし...
 ```
 
+## 用語ミニ解説 (非エンジニア向け)
+
+- **fork**: GitHub 上で自分用のコピーを作ること
+- **Use this template**: テンプレートから新しいリポジトリを作るボタン (リポジトリページ上部の緑ボタン)
+- **Secrets**: GitHub に暗号化保存できる環境変数。リポジトリの Settings → Secrets and variables → Actions で設定
+- **Actions タブ**: リポジトリページ上部にある、自動実行 (workflow) を管理する場所
+- **workflow_dispatch**: Actions タブから「Run workflow」ボタンで手動実行する仕組み
+- **cron**: 定期実行スケジュール (例: `0 22 * * *` = 毎日 UTC 22:00 = JST 07:00)
+- **config.yaml**: 設定ファイル。GitHub の Web 上でファイル名をクリック → 鉛筆マークで編集可能
+
 ## ⚡ Setup - 10分で動かす
 
 ### 1. このテンプレートを使用
@@ -40,8 +52,8 @@ GitHub で「Use this template」→ 新しいリポジトリを作成
 3. キーをコピー（後でSecretsに設定）
 
 ### 3. Gmail アプリパスワード生成
-1. Googleアカウント設定 → セキュリティ → 2段階認証 有効化
-2. アプリパスワード生成 → 「その他」を選択
+1. [Googleアカウント設定のセキュリティページ](https://myaccount.google.com/security) → 2段階認証 有効化
+2. [App Password 生成ページ](https://myaccount.google.com/apppasswords) → 「その他」を選択
 3. 生成されたパスワードをコピー
 
 ### 4. GitHub Secrets 設定
@@ -85,12 +97,24 @@ governance:
   retraction_filter: false     # 撤回チェックを無効化
 ```
 
+### ガバナンス7軸 設定対応表
+
+| config.yaml key | 日本語名 | 内容 |
+|---|---|---|
+| per_sentence_citation | 文単位引用 | 各文末に [PMID:xxx, §section] |
+| hallucination_selfcheck | ハルシネーション自己点検 | 不明点は "本文未記載" 明示 |
+| reproducibility_block | 再現性ブロック | dataset/n/primary endpoint 抽出 |
+| disclaimer | 免責文 | 末尾固定文 |
+| retraction_filter | 撤回論文フィルタ | Retraction Watch 突合 |
+| coi_label | COI ラベル | funding/COI 原文転記 |
+| audit_hash | 監査ハッシュ | prompt_sha256, model_version, retrieved_at |
+
 ### 配信時刻変更
 `.github/workflows/daily-digest.yml` の cron を編集:
 
 ```yaml
 schedule:
-  - cron: "0 23 * * *"  # UTC 23:00 = JST 08:00
+  - cron: "0 22 * * *"  # UTC 22:00 = JST 07:00
 ```
 
 ## 📊 監査ログ
@@ -114,6 +138,7 @@ schedule:
 - Gmail アプリパスワードが正しいか確認
 - スパムフォルダを確認  
 - 2段階認証が有効になっているか確認
+- 差出人 (GMAIL_ADDRESS) と宛先 (config.yaml の recipient) が同一だと迷惑メール判定されることがある
 
 ### API クォータエラー
 - Gemini API の利用制限を確認

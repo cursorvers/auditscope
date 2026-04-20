@@ -1,6 +1,8 @@
 """Gmail送信モジュール"""
 
+import html
 import smtplib
+import urllib.parse
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Dict
@@ -21,7 +23,7 @@ def send_digest(to: str, subject: str, html_body: str, address: str, app_passwor
     try:
         # メッセージ作成
         msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
+        msg['Subject'] = html.escape(subject)
         msg['From'] = address
         msg['To'] = to
         
@@ -148,24 +150,35 @@ def generate_paper_card_html(paper: Dict) -> str:
     badges_html = " ".join(badges)
     
     # リンク
-    pmid = paper.get("pmid", "")
-    doi = paper.get("doi", "")
-    pubmed_link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else "#"
-    doi_link = f"https://doi.org/{doi}" if doi else "#"
+    pmid = paper.get("pmid", "") or ""
+    doi = paper.get("doi", "") or ""
+    pubmed_link = f"https://pubmed.ncbi.nlm.nih.gov/{html.escape(pmid)}/" if pmid else "#"
+    # DOIはURL encodeしてからHTMLエスケープ
+    doi_encoded = urllib.parse.quote(doi, safe=":/.-_") if doi else ""
+    doi_link = f"https://doi.org/{doi_encoded}" if doi and doi_encoded.startswith(('10.', 'doi:', 'DOI:')) else "#"
+    
+    # 著者リストの処理
+    authors = paper.get('authors', []) or []
+    if isinstance(authors, list):
+        authors_str = ', '.join(str(author) for author in authors[:3])
+        if len(authors) > 3:
+            authors_str += '...'
+    else:
+        authors_str = str(authors)
     
     return f"""
         <div class="paper-card">
-            <div class="paper-title">{paper.get('title', 'タイトル不明')}</div>
+            <div class="paper-title">{html.escape(paper.get('title', '') or 'タイトル不明')}</div>
             <div class="paper-meta">
-                {', '.join(paper.get('authors', [])[:3])}{'...' if len(paper.get('authors', [])) > 3 else ''} | 
-                {paper.get('journal', '')} ({paper.get('year', '')})
+                {html.escape(authors_str)} | 
+                {html.escape(paper.get('journal', '') or '')} ({html.escape(str(paper.get('year', '') or ''))})
             </div>
             <div class="governance-badges">{badges_html}</div>
-            <div class="summary">{summary.get('summary_3_sentences', '要約なし')}</div>
+            <div class="summary">{html.escape(summary.get('summary_3_sentences', '') or '要約なし')}</div>
             <div class="links">
                 <a href="{pubmed_link}">PubMed</a>
                 {f'<a href="{doi_link}">DOI</a>' if doi else ''}
-                PMID: {pmid}
+                PMID: {html.escape(pmid)}
             </div>
         </div>
     """
@@ -178,7 +191,7 @@ def generate_tldr(papers_by_cluster: Dict[str, List[Dict]]) -> str:
     for cluster, papers in papers_by_cluster.items():
         if papers:
             top_paper = papers[0]  # 各クラスターの最初の論文をピックアップ
-            title = top_paper.get("title", "")[:80] + "..."
+            title = html.escape((top_paper.get("title", "") or "")[:80]) + "..."
             tldr_items.append(f"<li><strong>{cluster}:</strong> {title}</li>")
     
     return f"<ul>{''.join(tldr_items)}</ul>"
