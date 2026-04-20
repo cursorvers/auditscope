@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Secrets / config overrides
+config.yaml
+.env
+.env.*
+!.env.example
+
+# Logs (local runs only; GHA commits logs/audit/*.json)
+logs/*.log
+logs/tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp

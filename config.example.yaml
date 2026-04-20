@@ -1,0 +1,25 @@
+pubmed:
+  query_clusters:
+    deployment: '("clinical decision support"[MeSH] OR "artificial intelligence"[MeSH]) AND ("implementation" OR "workflow integration" OR "clinical utility" OR "real-world")'
+    use: '("large language model" OR "generative AI" OR "machine learning") AND ("diagnosis" OR "triage" OR "documentation" OR "patient communication") AND ("internal medicine" OR "primary care" OR "hospitalist")'
+    safety: '("AI safety" OR "algorithmic bias" OR "model drift" OR "hallucination" OR "automation bias" OR "AI error" OR "prompt injection" OR "PHI leak" OR "adversarial" OR "accountability") AND ("clinical" OR "healthcare" OR "patient safety")'
+  lookback_days: 1
+  max_per_cluster: 3
+
+delivery:
+  recipient: "clinician@example.com"
+  locale: "ja"
+
+model:
+  provider: "gemini"
+  name: "gemini-2.5-flash"
+  temperature: 0.2
+
+governance:
+  per_sentence_citation: true
+  hallucination_selfcheck: true
+  reproducibility_block: true
+  disclaimer: true
+  audit_hash: true
+  retraction_filter: true
+  coi_label: true
