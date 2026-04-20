@@ -28,3 +28,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Local agent tooling (Superset/Copilot CLI auto-generated)
+.github/hooks/
