@@ -1,0 +1,78 @@
+name: AuditScope v2 Daily Summary
+
+on:
+  schedule:
+    # JST 07:00 (UTC 22:00) に毎日実行
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+    # 手動実行用トリガー
+
+concurrency:
+  group: daily-summary
+  cancel-in-progress: false
+
+jobs:
+  auditscope-summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Validate required secrets
+        run: |
+          missing=""
+          [ -z "$GEMINI_API_KEY" ] && missing="$missing GEMINI_API_KEY"
+          [ -z "$GMAIL_ADDRESS" ] && missing="$missing GMAIL_ADDRESS"
+          [ -z "$GMAIL_APP_PASSWORD" ] && missing="$missing GMAIL_APP_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "エラー: うちで使って大丈夫？→以下のSecretsが未設定:$missing"
+            echo "Settings → Secrets and variables → Actions から設定してください"
+            exit 1
+          fi
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create output directory
+        run: |
+          mkdir -p output
+          mkdir -p logs
+
+      - name: Run AuditScope v2 main pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+          NCBI_EMAIL: "auditscope@example.com"
+        run: |
+          echo "うちで使って大丈夫？→AuditScope v2パイプライン開始"
+          python main.py
+
+      - name: Update history
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add history.json logs/audit.jsonl
+          git commit -m "chore: Update AuditScope v2 history and audit logs [skip ci]" || echo "No changes to commit"
+          git pull --rebase --autostash origin ${{ github.ref_name }}
+          git push

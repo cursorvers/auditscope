@@ -31,3 +31,8 @@ Thumbs.db
 
 # Local agent tooling (Superset/Copilot CLI auto-generated)
 .github/hooks/
+
+# AuditScope v2 specific
+logs/audit.jsonl
+*.docx
+config.yaml.bak

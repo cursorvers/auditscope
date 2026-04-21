@@ -1,0 +1,72 @@
+name: 🔧 AuditScope v2 Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      specialty_focus:
+        description: |
+          ガバナンス監視対象のAI医療システム領域を選択してください
+          例: 診断AI, 治療推奨AI, 創薬AI, 医療事務AI
+        required: true
+        type: choice
+        options:
+          - "診断支援AI"
+          - "治療推奨AI"
+          - "創薬・臨床試験AI"
+          - "医療事務・文書AI"
+          - "画像診断AI"
+          - "病理診断AI"
+          - "全般（包括的監視）"
+      governance_priority:
+        description: |
+          最も重視するガバナンス課題を選択してください
+          （7軸評価の重み付けに影響）
+        required: true
+        type: choice
+        options:
+          - "バイアス・公平性"
+          - "幻覚・虚偽情報対策"
+          - "透明性・説明可能性"
+          - "監査・検証可能性"
+          - "利益相反・倫理"
+          - "再現性・信頼性"
+          - "セキュリティ・プライバシー"
+
+jobs:
+  generate-config:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install google-generativeai pyyaml
+
+      - name: Generate AuditScope v2 config.yaml
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SPECIALTY_FOCUS: ${{ inputs.specialty_focus }}
+          GOVERNANCE_PRIORITY: ${{ inputs.governance_priority }}
+        run: |
+          echo "うちで使って大丈夫？→AuditScope v2設定生成開始"
+          echo "対象領域: $SPECIALTY_FOCUS"
+          echo "重視課題: $GOVERNANCE_PRIORITY"
+          python setup.py
+
+      - name: Commit generated config.yaml
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add config.yaml
+          git commit -m "setup: ${{ inputs.specialty_focus }}向けAuditScope v2設定を生成 [skip ci]" || echo "No config changes"
+          git push
