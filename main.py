@@ -11,11 +11,10 @@ PubMed検索 → フィルタリング → AI要約 → Word出力 → Gmail送�
 """
 
 import argparse
-import hashlib
-import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -27,6 +26,7 @@ from paper_filter import PaperFilter
 from ai_summarizer import summarize_paper
 from word_generator import generate_report
 from send_gmail import send_gmail
+from audit_schema import audit_record, append_audit, new_run_id
 
 # ロギング設定
 logging.basicConfig(
@@ -55,26 +55,6 @@ def load_config(config_path: str = "config.yaml") -> dict:
     return config
 
 
-def log_audit_entry(stage: str, inputs_data: dict, outputs_data: dict):
-    """監査ログエントリーをJSONL形式で記録"""
-    audit_log_path = Path("logs/audit.jsonl")
-    audit_log_path.parent.mkdir(exist_ok=True)
-    
-    # ハッシュ計算（機密データは含めない）
-    inputs_hash = hashlib.md5(json.dumps(inputs_data, sort_keys=True).encode()).hexdigest()
-    outputs_hash = hashlib.md5(json.dumps(outputs_data, sort_keys=True).encode()).hexdigest()
-    
-    entry = {
-        "timestamp": datetime.now().isoformat(),
-        "stage": stage,
-        "inputs_hash": inputs_hash,
-        "outputs_hash": outputs_hash
-    }
-    
-    with open(audit_log_path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-
 def main():
     """メインエントリーポイント"""
     parser = argparse.ArgumentParser(
@@ -93,6 +73,9 @@ def main():
         help="検索対象時間（デフォルト: 設定ファイルの値）"
     )
     args = parser.parse_args()
+
+    # Generate run ID for this pipeline execution
+    run_id = new_run_id()
 
     # 環境変数の読み込み
     load_dotenv()
@@ -125,26 +108,35 @@ def main():
     logger.info(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"検索期間: 過去{hours_back}時間")
     logger.info(f"ドライラン: {'はい' if args.dry_run else 'いいえ'}")
+    logger.info(f"実行ID: {run_id}")
     logger.info("=" * 60)
 
     try:
         # ステップ1: PubMed検索
         logger.info("━━━ ステップ1: PubMed検索 ━━━")
+        start_time = time.time()
+        
         searcher = PubMedSearcher(config, ncbi_email, ncbi_api_key)
         papers = searcher.search(hours_back=hours_back)
 
         # 監査ログ記録
-        log_audit_entry(
-            "pubmed_search",
-            {"hours_back": hours_back, "query_count": len(config.get("query_templates", {}))},
-            {"papers_found": len(papers)}
+        duration_ms = int((time.time() - start_time) * 1000)
+        record = audit_record(
+            "search",
+            inputs={"hours_back": hours_back, "query_count": len(config.get("query_templates", {}))},
+            outputs={"papers_found": len(papers)},
+            duration_ms=duration_ms,
+            run_id=run_id
         )
+        append_audit(record)
 
         if not papers:
             logger.info("うちで使って大丈夫？→新規論文なし。「新規論文なし」メールを送信")
             
             if not args.dry_run:
                 # 新規論文なしの通知
+                start_time = time.time()
+                
                 date_str = datetime.now().strftime("%Y-%m-%d")
                 subject = f"AuditScope v2 — {date_str} (0件)"
                 body = ("うちで使って大丈夫？→本日は新規論文が見つかりませんでした。\n\n"
@@ -157,19 +149,38 @@ def main():
                     gmail_address=gmail_address,
                     gmail_password=gmail_password
                 )
+                
+                # 監査ログ記録
+                duration_ms = int((time.time() - start_time) * 1000)
+                record = audit_record(
+                    "send_mail",
+                    inputs={"recipient": gmail_address, "subject": subject, "attachment": None},
+                    outputs={"sent": True},
+                    duration_ms=duration_ms,
+                    run_id=run_id
+                )
+                append_audit(record)
+                
             return
 
         # ステップ2: フィルタリング・ガバナンス評価
         logger.info("━━━ ステップ2: フィルタリング・ガバナンス評価 ━━━")
+        start_time = time.time()
+        
         filterer = PaperFilter(config)
         top_papers = filterer.filter_and_rank(papers)
 
         # 監査ログ記録
-        log_audit_entry(
-            "paper_filter",
-            {"input_papers": len(papers)},
-            {"filtered_papers": len(top_papers), "avg_governance_score": sum(p.governance_score for p in top_papers) / len(top_papers) if top_papers else 0}
+        duration_ms = int((time.time() - start_time) * 1000)
+        avg_score = sum(p.governance_score for p in top_papers) / len(top_papers) if top_papers else 0
+        record = audit_record(
+            "filter",
+            inputs={"input_papers": len(papers)},
+            outputs={"filtered_papers": len(top_papers), "avg_governance_score": avg_score},
+            duration_ms=duration_ms,
+            run_id=run_id
         )
+        append_audit(record)
 
         if not top_papers:
             logger.info("うちで使って大丈夫？→フィルタリング後に論文なし")
@@ -183,37 +194,52 @@ def main():
                 f"ガバナンス:{paper.governance_score:.1f}] {paper.title[:60]}..."
             )
 
-        # ステップ3: AI要約（スケルトン呼び出し）
+        # ステップ3: AI要約
         logger.info("━━━ ステップ3: AI要約生成 ━━━")
         try:
-            summaries = {}
+            summaries = []
             for paper in top_papers:
-                summary = summarize_paper(paper, config.get("governance_axes", {}))
-                summaries[paper.pmid] = summary
+                start_time = time.time()
                 
-            # 監査ログ記録
-            log_audit_entry(
-                "ai_summarizer",
-                {"papers_count": len(top_papers)},
-                {"summaries_generated": len(summaries)}
+                summary = summarize_paper(paper, config.get("governance_axes", {}), config, run_id)
+                summaries.append(summary)
+                
+                # 個別論文の監査ログ記録（summarize_paper内でも記録されるが、ここでも記録）
+                duration_ms = int((time.time() - start_time) * 1000)
+                
+            # 全体の監査ログ記録
+            record = audit_record(
+                "summarize_detailed",
+                inputs={"papers_count": len(top_papers)},
+                outputs={"summaries_generated": len(summaries)},
+                run_id=run_id
             )
+            append_audit(record)
+            
         except NotImplementedError as e:
             logger.error(f"AI要約でエラー: {e}")
             logger.error("うちで使って大丈夫？→Wave 3で実装予定のため処理中断")
             # Fail-closed: Geminiエラー時は送信しない
             sys.exit(1)
 
-        # ステップ4: Word文書生成（スケルトン呼び出し）
+        # ステップ4: Word文書生成
         logger.info("━━━ ステップ4: Word文書生成 ━━━")
         try:
+            start_time = time.time()
+            
             output_path = generate_report(top_papers, summaries, "output/auditscope_report.docx")
             
             # 監査ログ記録
-            log_audit_entry(
-                "word_generator",
-                {"papers_count": len(top_papers)},
-                {"report_generated": bool(output_path)}
+            duration_ms = int((time.time() - start_time) * 1000)
+            record = audit_record(
+                "generate_report",
+                inputs={"papers_count": len(top_papers)},
+                outputs={"report_generated": bool(output_path)},
+                duration_ms=duration_ms,
+                run_id=run_id
             )
+            append_audit(record)
+            
         except NotImplementedError as e:
             logger.error(f"Word生成でエラー: {e}")
             logger.error("うちで使って大丈夫？→Wave 3で実装予定のため処理中断")
@@ -223,6 +249,8 @@ def main():
         # ステップ5: Gmail送信
         if not args.dry_run:
             logger.info("━━━ ステップ5: Gmail送信 ━━━")
+            start_time = time.time()
+            
             date_str = datetime.now().strftime("%Y-%m-%d")
             subject = f"AuditScope v2 — {date_str} ({len(top_papers)}件)"
             
@@ -246,11 +274,16 @@ def main():
             )
 
             # 監査ログ記録
-            log_audit_entry(
-                "send_gmail",
-                {"recipient": gmail_address, "attachment": bool(attachment_path)},
-                {"sent": True}
+            duration_ms = int((time.time() - start_time) * 1000)
+            record = audit_record(
+                "send_mail",
+                inputs={"recipient": gmail_address, "attachment": bool(attachment_path)},
+                outputs={"sent": True},
+                duration_ms=duration_ms,
+                run_id=run_id
             )
+            append_audit(record)
+            
         else:
             logger.info("━━━ ドライランモード: Gmail送信をスキップ ━━━")
 
@@ -268,6 +301,18 @@ def main():
     except Exception as e:
         logger.error(f"予期しないエラーが発生しました: {e}", exc_info=True)
         logger.error("うちで使って大丈夫？→システム障害の可能性があります")
+        
+        # エラーの監査ログ記録
+        record = audit_record(
+            "error",
+            inputs={"error_type": type(e).__name__},
+            outputs={"error_message": str(e)},
+            status="error",
+            error=str(e),
+            run_id=run_id
+        )
+        append_audit(record)
+        
         sys.exit(1)
 
 

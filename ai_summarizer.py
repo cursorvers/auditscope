@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import google.generativeai as genai
 from pubmed_searcher import Paper
+from audit_schema import audit_record, append_audit
 
 logger = logging.getLogger(__name__)
 
@@ -103,28 +104,6 @@ def setup_gemini_client(api_key: str) -> genai.GenerativeModel:
     return genai.GenerativeModel('gemini-2.0-flash-exp')
 
 
-def log_token_usage(stage: str, paper_id: str, input_tokens: int, output_tokens: int) -> None:
-    """
-    トークン使用量をログに記録
-    
-    Args:
-        stage: 評価段階（screening/detailed）
-        paper_id: 論文ID
-        input_tokens: 入力トークン数
-        output_tokens: 出力トークン数
-    """
-    log_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "stage": stage,
-        "paper_id": paper_id,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens
-    }
-    
-    os.makedirs("logs", exist_ok=True)
-    with open("logs/audit.jsonl", "a", encoding="utf-8") as f:
-        f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-
 
 def retry_with_backoff(func, max_retries: int = 3, base_delay: float = 1.0):
     """
@@ -153,13 +132,14 @@ def retry_with_backoff(func, max_retries: int = 3, base_delay: float = 1.0):
             time.sleep(delay)
 
 
-def perform_screening(paper: Paper, model: genai.GenerativeModel) -> Dict[str, Any]:
+def perform_screening(paper: Paper, model: genai.GenerativeModel, run_id: str) -> Dict[str, Any]:
     """
     第1段階：スクリーニング評価を実行
     
     Args:
         paper: 評価対象論文
         model: Gemini モデル
+        run_id: パイプライン実行ID
         
     Returns:
         Dict[str, Any]: スクリーニング結果
@@ -183,17 +163,30 @@ def perform_screening(paper: Paper, model: genai.GenerativeModel) -> Dict[str, A
         
         return json.loads(content)
     
+    start_time = time.time()
     result = retry_with_backoff(call_api)
+    duration_ms = int((time.time() - start_time) * 1000)
     
-    # トークン使用量ログ（概算）
+    # トークン使用量（概算）
     input_tokens = len(prompt.split())
     output_tokens = len(str(result).split())
-    log_token_usage("screening", paper.pmid, input_tokens, output_tokens)
+    
+    # 監査ログ記録（v2スキーマ）
+    record = audit_record(
+        "summarize_screening",
+        paper_id=f"PMID:{paper.pmid}",
+        inputs={"title": paper.title, "abstract_length": len(paper.abstract) if paper.abstract else 0},
+        outputs=result,
+        tokens={"input": input_tokens, "output": output_tokens},
+        duration_ms=duration_ms,
+        run_id=run_id
+    )
+    append_audit(record)
     
     return result
 
 
-def perform_detailed_analysis(paper: Paper, model: genai.GenerativeModel, axes: Dict[str, Any]) -> Dict[str, Any]:
+def perform_detailed_analysis(paper: Paper, model: genai.GenerativeModel, axes: Dict[str, Any], run_id: str) -> Dict[str, Any]:
     """
     第2段階：詳細分析を実行
     
@@ -201,6 +194,7 @@ def perform_detailed_analysis(paper: Paper, model: genai.GenerativeModel, axes: 
         paper: 評価対象論文
         model: Gemini モデル
         axes: ガバナンス軸設定
+        run_id: パイプライン実行ID
         
     Returns:
         Dict[str, Any]: 詳細分析結果
@@ -232,12 +226,25 @@ def perform_detailed_analysis(paper: Paper, model: genai.GenerativeModel, axes: 
         
         return json.loads(content)
     
+    start_time = time.time()
     result = retry_with_backoff(call_api)
+    duration_ms = int((time.time() - start_time) * 1000)
     
-    # トークン使用量ログ（概算）
+    # トークン使用量（概算）
     input_tokens = len(prompt.split())
     output_tokens = len(str(result).split())
-    log_token_usage("detailed", paper.pmid, input_tokens, output_tokens)
+    
+    # 監査ログ記録（v2スキーマ）
+    record = audit_record(
+        "summarize_detailed", 
+        paper_id=f"PMID:{paper.pmid}",
+        inputs={"title": paper.title, "abstract_length": len(paper.abstract) if paper.abstract else 0},
+        outputs=result,
+        tokens={"input": input_tokens, "output": output_tokens},
+        duration_ms=duration_ms,
+        run_id=run_id
+    )
+    append_audit(record)
     
     return result
 
@@ -286,7 +293,7 @@ def validate_detailed_result(result: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def summarize_paper(paper: Paper, axes: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+def summarize_paper(paper: Paper, axes: Dict[str, Any], config: Dict[str, Any], run_id: str = None) -> Dict[str, Any]:
     """
     論文のガバナンス軸による要約を生成する
     
@@ -307,6 +314,7 @@ def summarize_paper(paper: Paper, axes: Dict[str, Any], config: Dict[str, Any]) 
         paper: 評価対象の論文オブジェクト
         axes: ガバナンス軸の設定（config.yamlから）
         config: 全体設定（screening_threshold等を含む）
+        run_id: パイプライン実行ID（未指定時は新規生成）
         
     Returns:
         ガバナンス評価結果辞書
@@ -326,6 +334,11 @@ def summarize_paper(paper: Paper, axes: Dict[str, Any], config: Dict[str, Any]) 
     if not api_key:
         raise ValueError("GEMINI_API_KEY環境変数が設定されていません")
     
+    # run_idが未指定の場合は新規生成
+    if run_id is None:
+        from audit_schema import new_run_id
+        run_id = new_run_id()
+    
     # Geminiクライアント設定
     model = setup_gemini_client(api_key)
     
@@ -340,7 +353,7 @@ def summarize_paper(paper: Paper, axes: Dict[str, Any], config: Dict[str, Any]) 
     try:
         # 第1段階：スクリーニング評価
         logger.info(f"スクリーニング評価開始: {paper.pmid}")
-        screening_result = perform_screening(paper, model)
+        screening_result = perform_screening(paper, model, run_id)
         result["screening"] = screening_result
         
         # 閾値チェック
@@ -348,7 +361,7 @@ def summarize_paper(paper: Paper, axes: Dict[str, Any], config: Dict[str, Any]) 
         if screening_result.get("relevance", 0) >= screening_threshold:
             # 第2段階：詳細分析
             logger.info(f"詳細分析開始: {paper.pmid}")
-            detailed_result = perform_detailed_analysis(paper, model, axes)
+            detailed_result = perform_detailed_analysis(paper, model, axes, run_id)
             result["detailed"] = validate_detailed_result(detailed_result)
         else:
             logger.info(f"スクリーニング閾値未満のため詳細分析をスキップ: {paper.pmid}")
