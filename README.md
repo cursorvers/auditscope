@@ -1,193 +1,145 @@
-# 🏥 AuditScope - Medical AI Paper Digest
+# AuditScope v2 — うちで使って大丈夫？
 
-⚠️ 本ツールは情報提供のみを目的とし、診断・治療推奨を行うものではありません。臨床判断の代替にはなりません。
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-臨床医向けのPubMed論文自動要約システム。毎朝7時にAI関連医学論文の要約をメール配信します。
+> 臨床医の自問をそのまま検査項目に変換する、医療AI論文ガバナンス監視 OSS テンプレート。
 
-医療AIガバナンスの7軸（引用・幻覚防止・再現性・免責・撤回チェック・利益相反・監査ログ）を組み込んだ、信頼性の高い情報提供を実現します。
+毎日届く医療AI論文を、7軸のガバナンス視点で自動評価し、Word レポートとして受け取れます。fork して自分の専門領域に config を合わせるだけで、自分専用のエビデンス監査パイプラインになります。あなたの臨床現場で「この AI システム、うちで使って大丈夫？」という問いを、継続的に検証し続けるためのツールです。
 
-## 📋 デモ（メール構成例）
+## ⚠️ Breaking Change: v1からの非互換
 
-```
-件名: Medical AI Digest - 2024/12/28 (9件)
+> **重要**: v1 "Daily Digest" ユーザーは直接アップグレードしないでください
 
-🏥 Medical AI Daily Digest
-2024年12月28日 | 9件の新着論文
+v1をお使いの方は `legacy/v1` ブランチまたは `v1.0.0` タグを参照し、移行については [MIGRATION.md](MIGRATION.md) をご確認ください。
 
-📋 今日のTL;DR
-• Deployment: Large Language Models in Clinical Decision Support...
-• Use Cases: AI-Powered Triage Systems in Emergency Medicine...  
-• Safety: Addressing Algorithmic Bias in Diagnostic AI...
+| 変更項目 | v1 (legacy) | v2 (current) |
+|----------|-------------|--------------|
+| 出力形式 | HTML メール | Word 添付ファイル |
+| 設定方法 | ハードコード | setup.py で対話設定 |
+| パイプライン | 単段階評価 | 2段階ガバナンス評価 |
+| 対象ユーザー | 単一ダイジェスト | Fork & 個別カスタマイズ |
 
-🚀 Deployment
-[論文カード1] タイトル + 要約 + ガバナンスバッジ + PubMedリンク
+## Why AuditScope? — うちで使って大丈夫？
 
-🔬 Use Cases  
-[論文カード2-4] ...
+**うちの患者層で使える？** → 相当論文と除外基準を毎日自動チェック。専門領域に特化した query templates で関連文献を継続監視し、あなたの診療科の患者特性に適用可能性を評価します。
 
-🛡️ Safety & Ethics
-[論文カード5-9] ...
+**監査どうする？** → 7軸マトリクス + JSONL audit log で完全な証跡管理。各論文を citation・hallucination・reproducibility の観点から数値化し、監査対応可能な記録を自動生成します。
 
-免責事項: この要約は医療従事者への情報提供を目的とし...
-```
+**外したとき誰が責任？** → retraction/COI/disclaimer の自動チェックで責任範囲を明確化。撤回DB突合、利益相反開示状況、免責文の適切性を事前に検証し、臨床判断の根拠を客観視します。
 
-## 用語ミニ解説 (非エンジニア向け)
+## 7軸ガバナンス評価フレームワーク
 
-- **fork**: GitHub 上で自分用のコピーを作ること
-- **Use this template**: テンプレートから新しいリポジトリを作るボタン (リポジトリページ上部の緑ボタン)
-- **Secrets**: GitHub に暗号化保存できる環境変数。リポジトリの Settings → Secrets and variables → Actions で設定
-- **Actions タブ**: リポジトリページ上部にある、自動実行 (workflow) を管理する場所
-- **workflow_dispatch**: Actions タブから「Run workflow」ボタンで手動実行する仕組み
-- **cron**: 定期実行スケジュール (例: `0 22 * * *` = 毎日 UTC 22:00 = JST 07:00)
-- **config.yaml**: 設定ファイル。GitHub の Web 上でファイル名をクリック → 鉛筆マークで編集可能
-- **PMID**: PubMed Unique Identifier。PubMed上の論文を一意に識別する番号
-- **MeSH**: Medical Subject Headings。医学論文の分類に使われる統制語彙体系
-- **E-utilities**: PubMedのAPIサービス。プログラムから論文情報を取得可能
-- **retraction**: 論文撤回。発表後に誤りや不正が判明して取り下げられた論文
+- **per_sentence_citation** — 主張に引用があるか（情報源の追跡可能性）
+- **hallucination** — 事実と乖離した合成がないか（AI生成内容の信頼性）
+- **reproducibility** — コード/データ/プロンプト/重み開示（再現検証可能性）
+- **disclaimer** — 臨床使用上の注意明記（責任範囲の明確化）
+- **retraction** — 撤回DB/懸念表明チェック（学術的信頼性）
+- **COI** — 資金/著者 COI 開示（透明性・公正性）
+- **audit_hash** — 監査証跡/バージョニング（処理履歴の検証可能性）
 
-## ⚡ Setup - 10分で動かす
+各論文は各軸で `low / medium / high / n/a` の4段階評価を受け、最高リスク軸が全体リスク等級となります。
 
-### 1. このテンプレートを使用
-GitHub で「Use this template」→ 新しいリポジトリを作成
-
-### 2. Actions を有効化
-Fork したリポジトリで Actions タブ → 「I understand my workflows, go ahead and enable them」をクリック
-
-### 3. Google AI Studio API キー取得
-1. [Google AI Studio](https://aistudio.google.com/) にアクセス
-2. 「Get API key」→ 新しいプロジェクトでキー作成
-3. キーをコピー（後でSecretsに設定）
-
-### 4. Gmail アプリパスワード生成
-1. [Googleアカウント設定のセキュリティページ](https://myaccount.google.com/security) → 2段階認証 有効化
-2. [App Password 生成ページ](https://myaccount.google.com/apppasswords) → 「その他」を選択
-3. 生成されたパスワードをコピー
-
-### 5. GitHub Secrets 設定
-リポジトリ設定 → Secrets and variables → Actions → New repository secret
+## Architecture
 
 ```
-GEMINI_API_KEY: (Step 3のAPIキー)
-GMAIL_ADDRESS: your.email@gmail.com  
-GMAIL_APP_PASSWORD: (Step 4のアプリパスワード)
+PubMed (BioPython Entrez)
+        │
+        ▼
+  paper_filter ─── retraction DB / study-type score
+        │
+        ▼
+  ai_summarizer ─── Gemini 2.0 flash / 2-stage 7-axis
+        │
+        ▼
+  word_generator ─── python-docx (CJK Yu Gothic)
+        │
+        ▼
+  send_gmail ─── SMTP app password
+        │
+        ▼
+  logs/audit.jsonl ─── v2 schema (run_id + sha256 hashes)
 ```
 
-### 6. config.yaml 編集
-`cp config.example.yaml config.yaml` (または GitHub Web UI 上で config.example.yaml を開いて config.yaml という名前でコピー)
+## Quickstart — Fork & 自分専用パイプライン構築
 
-配信先メールアドレスを変更:
+1. **Fork**: https://github.com/masa-stage1/auditscope を fork します
+2. **依存関係インストール**: `pip install -r requirements.txt`
+3. **環境設定**: `.env.example` を `.env` にコピーし、以下を設定
+   - `GEMINI_API_KEY` (Google AI Studio から取得)
+   - `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` (Gmail 2段階認証 + アプリパスワード)
+   - `NCBI_API_KEY` (オプション、PubMed API レート制限回避)
+4. **設定生成**: `python setup.py` — Gemini があなたの専門領域・関心事項をインタビューし、最適な `config.yaml` を自動生成します
+5. **ローカルテスト**: `python main.py --dry-run` でパイプライン動作確認
+6. **本格運用**: GitHub に push すると、毎日 07:00 JST に GitHub Actions が自動実行されます
+
+## Configuration — config.yaml 設定ガイド
+
+### 主要設定ブロック
+
+- **tier1/2/3 journals**: ジャーナル階層による信頼度評価
+- **primary_specialties**: あなたの専門領域キーワード
+- **query_templates**: 4クラスター検索 (tier1_clinical, deployment, use_case, safety)
+- **governance_keywords**: ガバナンス関連語句の監視対象
+- **governance_axes**: 7軸の有効/無効設定
+- **date_window_hours**: 検索対象期間 (24時間 = 毎日実行想定)
+- **screening_threshold**: 2段階評価での詳細分析閾値
+
+### query_templates 例
 
 ```yaml
-delivery:
-  recipient: "your.email@example.com"  # ここを変更
+query_templates:
+  safety: "(validation OR bias OR hallucination OR \"model drift\" OR \"automation bias\")"
 ```
 
-### 7. テスト実行
-Actions タブ → 「Daily Medical Paper Digest」→ 「Run workflow」
+**重要**: MeSH terms は使用しません。実際の論文で使われる語句のみを記載してください。
 
-## 🎯 カスタマイズ
+## GuideScope Integration — 医療AI規制クロスウォーク
 
-### PubMed 検索クエリ変更
-`config.yaml` の `query_clusters` を編集:
+AuditScope の 7軸は、GuideScope medical-corpus の PMDA/FDA/EU AI Act ガバナンス列にマッピング可能です。
 
-```yaml
-pubmed:
-  query_clusters:
-    deployment: '("clinical decision support"[MeSH] OR "AI implementation")'
-    # 専門領域に応じてクエリを調整
-```
+### 推奨マッピング表
 
-### ガバナンス軸の ON/OFF
-不要な機能を無効化:
+| AuditScope axis        | GuideScope column      |
+|------------------------|------------------------|
+| per_sentence_citation  | C (透明性)             |
+| hallucination          | C (透明性) + K (臨床評価) |
+| reproducibility        | C (透明性) + M (ライフサイクル) |
+| disclaimer             | E (Human oversight)    |
+| retraction             | G (PCCP市販後)         |
+| COI                    | H (責任) + I (同意プライバシー) |
+| audit_hash             | D (監査ログ)           |
 
-```yaml
-governance:
-  per_sentence_citation: false  # 引用を無効化
-  retraction_filter: false     # 撤回チェックを無効化
-```
+### 使用方法
 
-### ガバナンス7軸 設定対応表
+`config.yaml` の `crosswalk_refs` セクションを設定すると、Word レポートのフッター部分に該当する規制ガイダンス参照が自動挿入されます。詳細な PMDA/FDA/EU AI Act/ISO/IEC 42001/NIST AI RMF ガイダンス内容は `/Users/masayuki/Dev/guidescope` で提供されています。
 
-| config.yaml key | 日本語名 | 内容 |
-|---|---|---|
-| per_sentence_citation | 文単位引用 | 各文末に [PMID:xxx, §section] |
-| hallucination_selfcheck | ハルシネーション自己点検 | 不明点は "本文未記載" 明示 |
-| reproducibility_block | 再現性ブロック | dataset/n/primary endpoint 抽出 |
-| disclaimer | 免責文 | 末尾固定文 |
-| retraction_filter | 撤回論文フィルタ | Retraction Watch 突合 |
-| coi_label | COI ラベル | funding/COI 原文転記 |
-| audit_hash | 監査ハッシュ | prompt_sha256, model_version, retrieved_at |
+GuideScope MCP をインストールしていない場合でも AuditScope は正常動作します。クロスウォーク参照はオプション・助言的機能です。
 
-### 配信時刻変更
-`.github/workflows/daily-digest.yml` の cron を編集:
+## 出力サンプル — Word レポート構成
 
-```yaml
-schedule:
-  - cron: "0 22 * * *"  # UTC 22:00 = JST 07:00
-```
+生成される Word 文書の構成:
 
-## 📊 監査ログ
+- **ヘッダーブロック**: 実行日時、検索条件、総論文数
+- **リスク要約テーブル**: 7軸別のリスク分布統計
+- **論文詳細セクション**: 論文別の7軸評価結果、要約、引用情報
+- **フッター**: 監査証跡ハッシュ、GuideScope クロスウォーク参照 (設定時)
 
-`logs/audit/YYYY-MM-DD.json` にSHA256ハッシュチェーンで処理履歴を記録:
+サンプル確認: `python main.py --dry-run --sample-output` でテスト文書を生成できます。
 
-```json
-{
-  "date": "2024-12-28",
-  "prev_hash": "a1b2c3...",
-  "entries": [...],
-  "current_hash": "d4e5f6..."
-}
-```
+## Contributing / License / Attribution
 
-チェーン整合性により、処理内容の改ざん検知が可能です。
+### 貢献方法
 
-## 🔧 トラブルシューティング
+Pull Request 歓迎です。コード変更時は `python3 -m py_compile *.py` で構文チェックをお願いします。
 
-### Gmail が届かない
-- Gmail アプリパスワードが正しいか確認
-- スパムフォルダを確認  
-- 2段階認証が有効になっているか確認
-- 差出人 (GMAIL_ADDRESS) と宛先 (config.yaml の recipient) が同一だと迷惑メール判定されることがある
+### ライセンス
 
-### API クォータエラー
-- Gemini API の利用制限を確認
-- `config.yaml` の `max_per_cluster` を削減
+MIT License. 本プロジェクトは `yush02084/medical-paper-summarizer-public` (MIT) の派生作品です。
 
-### Retraction CSV 404エラー
-```yaml
-governance:
-  retraction_filter: false  # 一時的に無効化
-```
+### 帰属表示
 
-### ワークフローが失敗する
-- Actions タブのログを確認
-- 自動的に Issue が作成されます
-
-## ⚖️ 免責・ライセンス
-
-### MIT ライセンス
-Copyright 2026 cursorvers
-
-### 医療免責
-- 本システムは医師法上の医療行為を構成しません
-- 診断・治療の推奨を行うものではありません  
-- 臨床判断は必ず原著論文・ガイドラインを参照してください
-- システムの出力内容について一切の責任を負いません
-
-## 🏗️ Governance 設計の背景
-
-医療AI導入における信頼性・透明性・説明責任を担保するため、以下7軸のガバナンスフレームワークを採用:
-
-1. **文章単位引用**: 情報の出典明確化
-2. **幻覚防止**: AI の推測・補完を排除
-3. **再現性担保**: 研究の検証可能性確保
-4. **免責の明文化**: 責任範囲の明確化
-5. **撤回論文への対応**: 科学的信頼性の維持
-6. **利益相反の開示**: 透明性の確保
-7. **監査証跡**: 処理履歴の検証可能性
-
-詳細な設計思想: [https://cursorvers.jp/tools/auditscope/](https://cursorvers.jp/tools/auditscope/)
+各 .py ファイルおよび LICENSE ファイルに上流プロジェクト帰属を記載しています。配布時は帰属表示を維持してください。
 
 ---
 
-**🚀 今すぐ始める**: 「Use this template」→ Secrets 設定 → config.yaml 編集 → Run workflow
+> **2024年医療AI論文監視の新標準** — Fork して今すぐ始める: `python setup.py`

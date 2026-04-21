@@ -1,0 +1,133 @@
+# AuditScope v2 Configuration — AI医療システムガバナンス監視設定
+# 「うちで使って大丈夫？」の臨床医視点でのリスク評価体系
+
+# ガバナンス等級体系（Tier分類）
+tier1_journals:
+  - "N Engl J Med"
+  - "Lancet"
+  - "JAMA"
+  - "BMJ"
+  - "Nature Medicine"
+  - "Ann Intern Med"
+
+tier2_journals:
+  - "Nature"
+  - "Science"
+  - "Cell"
+  - "JAMA Netw Open"
+  - "Lancet Digit Health"
+
+tier3_journals:
+  - "JMIR"
+  - "NPJ Digit Med"
+  - "Radiol Artif Intell"
+
+# 専門領域設定
+primary_specialties:
+  - "medical AI"
+  - "clinical AI"
+  - "healthcare AI"
+
+secondary_specialties: []
+
+# 研究デザイン評価スコア
+study_type_scores:
+  "Randomized Controlled Trial": 10
+  "Guideline": 10
+  "Meta-Analysis": 9
+  "Systematic Review": 9
+  "Cohort Study": 7
+  "Case-Control Study": 5
+  "Case Series": 3
+  "Case Report": 2
+  "Review": 4
+
+# ガバナンス関連キーワード
+governance_keywords:
+  - "validation"
+  - "bias"
+  - "fairness"
+  - "hallucination"
+  - "retraction"
+  - "reproducibility"
+  - "audit"
+  - "prompt injection"
+  - "PHI"
+  - "model drift"
+  - "automation bias"
+  - "adversarial"
+  - "accountability"
+  - "COI"
+  - "overfitting"
+  - "transparency"
+  - "explainability"
+  - "generalizability"
+  - "distribution shift"
+  - "clinical utility"
+
+# ガバナンス軸設定（7軸評価フレームワーク）
+governance_axes:
+  per_sentence_citation:
+    enabled: true
+    description: "文単位での引用根拠の明確性評価"
+  hallucination:
+    enabled: true
+    description: "幻覚・虚偽情報生成のリスク評価"
+  reproducibility:
+    enabled: true
+    description: "再現性・検証可能性の担保評価"
+  disclaimer:
+    enabled: true
+    description: "免責・限界の適切な明示評価"
+  retraction:
+    enabled: true
+    description: "撤回リスクの事前検出評価"
+  COI:
+    enabled: true
+    description: "利益相反の開示・影響評価"
+  audit_hash:
+    enabled: true
+    description: "監査証跡・検証可能性の確保評価"
+
+# PubMedクエリテンプレート（MeSH禁止・実論文語句のみ）
+query_templates:
+  tier1_clinical: "(AI OR \"artificial intelligence\" OR \"machine learning\" OR \"deep learning\") AND (clinical OR medical OR physician OR healthcare)"
+  deployment: "(\"clinical decision support\" OR \"diagnostic AI\" OR \"clinical AI\" OR \"point-of-care AI\")"
+  use_case: "(\"patient care\" OR \"clinical workflow\" OR \"electronic health record\")"
+  safety: "(validation OR bias OR hallucination OR \"model drift\" OR \"automation bias\")"
+
+# 検索・処理設定
+date_window_hours: 24
+max_papers_per_run: 10
+ncbi_api_key_env: "NCBI_API_KEY"
+screening_threshold: 6  # 2段階評価での詳細分析閾値
+
+# Optional crosswalk references — map AuditScope 7 axes to GuideScope
+# medical-corpus columns. If present, word_generator includes these refs
+# in the report footer.
+# See: /Users/masayuki/Dev/guidescope/packages/mcp/src/tools/governance-crosswalk.ts
+crosswalk_refs:
+  enabled: false  # set true if you have GuideScope MCP configured
+  guidescope_mcp_endpoint: ""  # optional: local MCP endpoint URL
+  mapping:
+    per_sentence_citation: ["C"]
+    hallucination: ["C", "K"]
+    reproducibility: ["C", "M"]
+    disclaimer: ["E"]
+    retraction: ["G"]
+    COI: ["H", "I"]
+    audit_hash: ["D"]
+  column_names:
+    A: "適用対象"
+    B: "リスク分類"
+    C: "透明性"
+    D: "監査ログ"
+    E: "Human oversight"
+    F: "データ品質バイアス"
+    G: "PCCP市販後"
+    H: "責任"
+    I: "同意プライバシー"
+    J: "セキュリティ"
+    K: "臨床評価"
+    L: "国際整合"
+    M: "ライフサイクル"

@@ -10,8 +10,7 @@ venv/
 *.egg-info/
 .pytest_cache/
 
-# Secrets / config overrides
-config.yaml
+# Secrets / env only (config.yaml is shipped as the default governance template)
 .env
 .env.*
 !.env.example
